@@ -1,0 +1,7 @@
+{
+  "name": "Comproum.com.br - Marketplace Reverso",
+  "description": "Uma plataforma inovadora de comércio reverso onde o comprador define o preço e os fornecedores competem para atender à demanda.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
