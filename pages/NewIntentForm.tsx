@@ -1,7 +1,8 @@
 
 import React, { useState } from 'react';
-import { UserProfile, IntentType, ProductCondition } from '../types';
-import { ShoppingCart, ArrowLeft, Tag, DollarSign, Info, Plus } from 'lucide-react';
+import { UserProfile, IntentType, ProductCondition, Intent, BUSINESS_CATEGORIES } from '../types';
+import { Database } from '../services/db';
+import { ShoppingCart, ArrowLeft, Tag, DollarSign, Info, Plus, Loader2, List } from 'lucide-react';
 
 interface NewIntentFormProps {
   user: UserProfile;
@@ -10,8 +11,10 @@ interface NewIntentFormProps {
 }
 
 const NewIntentForm: React.FC<NewIntentFormProps> = ({ user, onComplete, onCancel }) => {
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     type: IntentType.BUY,
+    category: '',
     productName: '',
     description: '',
     budget: '',
@@ -20,9 +23,31 @@ const NewIntentForm: React.FC<NewIntentFormProps> = ({ user, onComplete, onCance
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Simulate API call
-    console.log('Postando nova intenção:', formData);
-    onComplete();
+    if (!formData.category) {
+      alert('Por favor, selecione uma categoria.');
+      return;
+    }
+    setIsSubmitting(true);
+
+    const newIntent: Intent = {
+      id: `i_${Math.random().toString(36).substr(2, 9)}`,
+      userId: user.id,
+      type: formData.type,
+      category: formData.category,
+      productName: formData.productName,
+      description: formData.description,
+      budget: parseFloat(formData.budget),
+      condition: formData.condition,
+      createdAt: new Date().toISOString(),
+      status: 'OPEN',
+      offersCount: 0
+    };
+
+    setTimeout(() => {
+      Database.saveIntent(newIntent);
+      setIsSubmitting(false);
+      onComplete();
+    }, 800);
   };
 
   return (
@@ -40,7 +65,6 @@ const NewIntentForm: React.FC<NewIntentFormProps> = ({ user, onComplete, onCance
         </div>
 
         <form onSubmit={handleSubmit} className="p-8 space-y-6">
-          {/* Action Type */}
           <div className="space-y-4">
             <label className="block text-sm font-bold text-slate-700 uppercase tracking-widest">Objetivo</label>
             <div className="grid grid-cols-3 gap-3">
@@ -61,7 +85,24 @@ const NewIntentForm: React.FC<NewIntentFormProps> = ({ user, onComplete, onCance
             </div>
           </div>
 
-          {/* Product Info */}
+          <div className="space-y-4">
+            <label className="block text-sm font-bold text-slate-700 uppercase tracking-widest">Categoria</label>
+            <div className="relative">
+              <List className="absolute left-4 top-4 text-slate-400" size={20} />
+              <select 
+                required
+                className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all font-medium appearance-none"
+                value={formData.category}
+                onChange={e => setFormData({...formData, category: e.target.value})}
+              >
+                <option value="" disabled>Selecione uma categoria...</option>
+                {BUSINESS_CATEGORIES.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
           <div className="space-y-4">
             <label className="block text-sm font-bold text-slate-700 uppercase tracking-widest">Produto ou Serviço</label>
             <input 
@@ -89,6 +130,7 @@ const NewIntentForm: React.FC<NewIntentFormProps> = ({ user, onComplete, onCance
                 <input 
                   required
                   type="number"
+                  step="0.01"
                   className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all font-bold text-xl text-slate-900"
                   placeholder="0,00"
                   value={formData.budget}
@@ -113,15 +155,17 @@ const NewIntentForm: React.FC<NewIntentFormProps> = ({ user, onComplete, onCance
           <div className="bg-blue-50 p-4 rounded-2xl flex gap-3 items-start border border-blue-100">
             <Info className="text-blue-500 shrink-0 mt-0.5" size={20} />
             <p className="text-sm text-blue-700 leading-relaxed">
-              Ao postar esta intenção, todos os fornecedores cadastrados que trabalham com este segmento serão notificados para enviar propostas personalizadas para você.
+              Ao publicar, apenas os fornecedores especializados na categoria <span className="font-bold underline">{formData.category || 'selecionada'}</span> receberão sua solicitação.
             </p>
           </div>
 
           <button 
             type="submit"
-            className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black text-xl hover:bg-blue-700 transition-all shadow-xl shadow-blue-600/30 flex items-center justify-center gap-2"
+            disabled={isSubmitting}
+            className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black text-xl hover:bg-blue-700 transition-all shadow-xl shadow-blue-600/30 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
           >
-            <Plus size={24} /> PUBLICAR INTENÇÃO
+            {isSubmitting ? <Loader2 className="animate-spin" size={24} /> : <Plus size={24} />}
+            {isSubmitting ? 'PUBLICANDO...' : 'PUBLICAR INTENÇÃO'}
           </button>
         </form>
       </div>
