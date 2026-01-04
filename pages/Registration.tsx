@@ -6,6 +6,7 @@ import { ArrowLeft, User, Mail, FileText, MapPin, Search, Loader2, Hash, Landmar
 
 interface RegistrationProps {
   onComplete: (data: UserProfile) => void;
+  onGoogleSignUp: (role: UserRole) => void;
   onBack: () => void;
 }
 
@@ -14,7 +15,7 @@ const validateCPF = (cpf: string) => {
   return cleanCPF.length === 11 || cleanCPF.length === 14;
 };
 
-const Registration: React.FC<RegistrationProps> = ({ onComplete, onBack }) => {
+const Registration: React.FC<RegistrationProps> = ({ onComplete, onGoogleSignUp, onBack }) => {
   const [role, setRole] = useState<UserRole>(UserRole.BUYER);
   const [loadingCep, setLoadingCep] = useState(false);
   const [selectedSegments, setSelectedSegments] = useState<string[]>([]);
@@ -117,13 +118,26 @@ const Registration: React.FC<RegistrationProps> = ({ onComplete, onBack }) => {
         <div className="p-8 border-b border-slate-100 bg-slate-50/50">
           <h1 className="text-2xl font-bold text-slate-900">Novo Cadastro</h1>
           <p className="text-slate-500 text-sm">Crie seu acesso exclusivo ao Comproum.</p>
-          <div className="flex gap-2 mt-6 p-1 bg-white border border-slate-200 rounded-xl w-fit">
-            <button type="button" onClick={() => setRole(UserRole.BUYER)} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${role === UserRole.BUYER ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-500 hover:bg-slate-50'}`}>Sou Comprador</button>
-            <button type="button" onClick={() => setRole(UserRole.SUPPLIER)} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${role === UserRole.SUPPLIER ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-500 hover:bg-slate-50'}`}>Sou Fornecedor</button>
+          <div className="flex flex-col sm:flex-row gap-4 mt-6 items-start sm:items-center">
+            <div className="flex gap-2 p-1 bg-white border border-slate-200 rounded-xl">
+              <button type="button" onClick={() => setRole(UserRole.BUYER)} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${role === UserRole.BUYER ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-500 hover:bg-slate-50'}`}>Sou Comprador</button>
+              <button type="button" onClick={() => setRole(UserRole.SUPPLIER)} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${role === UserRole.SUPPLIER ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-500 hover:bg-slate-50'}`}>Sou Fornecedor</button>
+            </div>
+            <div className="hidden sm:block h-6 w-px bg-slate-200"></div>
+            <button 
+              type="button"
+              onClick={() => onGoogleSignUp(role)}
+              className="flex items-center gap-3 px-6 py-2.5 bg-white border border-slate-300 rounded-xl font-bold text-slate-700 hover:bg-slate-50 transition-all shadow-sm active:scale-[0.98]"
+            >
+              <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.964 10.706c-.18-.54-.282-1.117-.282-1.706s.102-1.166.282-1.706V4.962H.957C.347 6.177 0 7.55 0 9s.347 2.823.957 4.038l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.443 2.017.957 4.962L3.964 7.294C4.672 5.167 6.656 3.58 9 3.58z"/></svg>
+              Cadastrar com Google
+            </button>
           </div>
         </div>
 
         <form onSubmit={handleSubmit} className="p-8 space-y-8">
+          <div className="relative flex items-center justify-center"><div className="w-full border-t border-slate-100"></div><span className="relative px-3 bg-white text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Ou preencha o formulário</span></div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="space-y-4">
               <label className="block text-xs font-black text-slate-400 uppercase tracking-widest">Acesso</label>

@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { UserProfile, Intent, Offer, IntentType, ProductCondition, BUSINESS_CATEGORIES } from '../types';
 import { Database } from '../services/db';
-import { Target, Search, BarChart3, Package, Users, Send, Filter, CheckCircle, DollarSign, SlidersHorizontal, ArrowUpDown, Camera, X, Image as ImageIcon, Plus, Bell, Calendar, Clock, AlertCircle, Loader2, Coins, Briefcase, ArrowLeftRight, Ban } from 'lucide-react';
+import { Target, Search, BarChart3, Package, Users, Send, Filter, CheckCircle, DollarSign, SlidersHorizontal, ArrowUpDown, Camera, X, Image as ImageIcon, Plus, Bell, Calendar, Clock, AlertCircle, Loader2, Coins, Briefcase, ArrowLeftRight, Ban, RotateCcw } from 'lucide-react';
 import { BarChart, Bar, ResponsiveContainer } from 'recharts';
 
 interface SupplierDashboardProps {
@@ -30,13 +30,12 @@ const SupplierDashboard: React.FC<SupplierDashboardProps> = ({ user }) => {
   const [proposalValidity, setProposalValidity] = useState('');
   const [proposalDesc, setProposalDesc] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [editingOfferId, setEditingOfferId] = useState<string | null>(null);
 
   // Carrega dados reais do banco de dados
   useEffect(() => {
     const loadData = () => {
       const intents = Database.getIntents();
-      // FILTRO CRÍTICO: Filtra apenas intenções abertas, que não são do próprio usuário,
-      // e que pertençam a um dos segmentos de atuação do fornecedor.
       const filteredIntents = intents.filter(i => {
         const isOpen = i.status === 'OPEN';
         const isNotMine = i.userId !== user.id;
@@ -54,17 +53,6 @@ const SupplierDashboard: React.FC<SupplierDashboardProps> = ({ user }) => {
     const interval = setInterval(loadData, 5000); 
     return () => clearInterval(interval);
   }, [user.id, user.businessSegments]);
-
-  // Follow-up Modal State
-  const [followUpOffer, setFollowUpOffer] = useState<Offer | null>(null);
-  
-  // Filter and Sort States
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterType, setFilterType] = useState<IntentType | 'ALL'>('ALL');
-  const [filterCondition, setFilterCondition] = useState<ProductCondition | 'ALL'>('ALL');
-  const [sortBy, setSortBy] = useState<'NEWEST' | 'BUDGET_DESC' | 'BUDGET_ASC'>('NEWEST');
-  const [minPrice, setMinPrice] = useState<string>('');
-  const [maxPrice, setMaxPrice] = useState<string>('');
 
   // Image Upload State
   const [proposalImages, setProposalImages] = useState<string[]>([]);
@@ -100,7 +88,7 @@ const SupplierDashboard: React.FC<SupplierDashboardProps> = ({ user }) => {
     setIsSubmitting(true);
 
     const newOffer: Offer = {
-      id: `o_${Math.random().toString(36).substr(2, 9)}`,
+      id: editingOfferId || `o_${Math.random().toString(36).substr(2, 9)}`,
       intentId: selectedOp.id,
       supplierId: user.id,
       supplierName: user.name,
@@ -115,36 +103,42 @@ const SupplierDashboard: React.FC<SupplierDashboardProps> = ({ user }) => {
     };
 
     setTimeout(() => {
-      Database.saveOffer(newOffer);
-      setMyOffers(prev => [newOffer, ...prev]);
+      if (editingOfferId) {
+        Database.updateOffer(newOffer);
+      } else {
+        Database.saveOffer(newOffer);
+      }
+      
       setIsSubmitting(false);
       setSelectedOp(null);
+      setEditingOfferId(null);
       setProposalImages([]);
       setProposalPrice('');
       setProposalValidity('');
       setProposalDesc('');
-      alert('Sua proposta foi enviada com sucesso ao comprador!');
+      alert(editingOfferId ? 'Sua oferta foi atualizada e reenviada!' : 'Sua proposta foi enviada com sucesso ao comprador!');
     }, 1000);
   };
 
-  const handleScheduleFollowUp = (hours: number) => {
-    if (!followUpOffer) return;
-    
-    const followUpDate = new Date();
-    followUpDate.setHours(followUpDate.getHours() + hours);
-    
-    const offers = Database.getOffers();
-    const updatedOffers = offers.map(off => 
-      off.id === followUpOffer.id 
-        ? { ...off, followUpAt: followUpDate.toISOString() }
-        : off
-    );
-    localStorage.setItem('comproum_offers', JSON.stringify(updatedOffers));
-    setMyOffers(updatedOffers.filter(o => o.supplierId === user.id));
-    
-    setFollowUpOffer(null);
-    alert(`Lembrete agendado para ${followUpDate.toLocaleString('pt-BR')}`);
+  const handleTryAgain = (offer: Offer) => {
+    const relatedIntent = Database.getIntents().find(i => i.id === offer.intentId);
+    if (relatedIntent) {
+      setSelectedOp(relatedIntent);
+      setEditingOfferId(offer.id);
+      setProposalPrice(offer.price.toString());
+      setProposalDesc(offer.description);
+      setProposalImages(offer.images);
+      setProposalValidity(offer.validUntil.split('T')[0]);
+    }
   };
+
+  // Filter and Sort States
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterType, setFilterType] = useState<IntentType | 'ALL'>('ALL');
+  const [filterCondition, setFilterCondition] = useState<ProductCondition | 'ALL'>('ALL');
+  const [sortBy, setSortBy] = useState<'NEWEST' | 'BUDGET_DESC' | 'BUDGET_ASC'>('NEWEST');
+  const [minPrice, setMinPrice] = useState<string>('');
+  const [maxPrice, setMaxPrice] = useState<string>('');
 
   const filteredOpportunities = useMemo(() => {
     let result = [...allOpportunities];
@@ -248,9 +242,9 @@ const SupplierDashboard: React.FC<SupplierDashboardProps> = ({ user }) => {
           </div>
 
           <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-6 rounded-3xl text-white shadow-xl shadow-blue-600/20">
-            <h3 className="font-bold text-lg mb-2">Dica de Vendedor</h3>
+            <h3 className="font-bold text-lg mb-2 text-white">Dica de Vendedor</h3>
             <p className="text-blue-100 text-xs leading-relaxed opacity-90">
-              Você está visualizando apenas intenções das categorias <span className="font-bold text-white underline">{user.businessSegments?.join(', ')}</span>.
+              Mantenha seu tempo de resposta baixo para ganhar prioridade no algoritmo e fechar mais negócios.
             </p>
           </div>
         </div>
@@ -285,92 +279,9 @@ const SupplierDashboard: React.FC<SupplierDashboardProps> = ({ user }) => {
                     </div>
                   </div>
                 </div>
-
-                <div className="flex flex-wrap items-end gap-6 pt-4 border-t border-slate-100">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tipo de Intenção</label>
-                    <div className="flex gap-2">
-                      {['ALL', IntentType.BUY, IntentType.SELL, IntentType.TRADE].map((type) => (
-                        <button
-                          key={type}
-                          onClick={() => setFilterType(type as any)}
-                          className={`px-3 py-2 rounded-lg text-xs font-bold transition-all border ${filterType === type ? 'bg-blue-600 border-blue-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-600 hover:border-blue-300'}`}
-                        >
-                          {type === 'ALL' ? 'Todos' : type === IntentType.BUY ? 'Compra' : type === IntentType.SELL ? 'Venda' : 'Troca'}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Estado</label>
-                    <div className="flex gap-2">
-                      {['ALL', ProductCondition.NEW, ProductCondition.USED].map((cond) => (
-                        <button
-                          key={cond}
-                          onClick={() => setFilterCondition(cond as any)}
-                          className={`px-3 py-2 rounded-lg text-xs font-bold transition-all border ${filterCondition === cond ? 'bg-blue-600 border-blue-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-600 hover:border-blue-300'}`}
-                        >
-                          {cond === 'ALL' ? 'Qualquer' : cond === ProductCondition.NEW ? 'Novo' : 'Usado'}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="space-y-2 flex-grow max-w-[280px]">
-                    <div className="flex items-center gap-1 mb-2">
-                      <Coins size={12} className="text-slate-400" />
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Faixa de Orçamento (R$)</label>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="relative flex-1">
-                        <span className="absolute left-2.5 top-2.5 text-[10px] font-bold text-slate-400">R$</span>
-                        <input 
-                          type="number"
-                          placeholder="Mín"
-                          className="w-full pl-8 pr-2 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 font-medium"
-                          value={minPrice}
-                          onChange={(e) => setMinPrice(e.target.value)}
-                        />
-                      </div>
-                      <span className="text-slate-300">-</span>
-                      <div className="relative flex-1">
-                        <span className="absolute left-2.5 top-2.5 text-[10px] font-bold text-slate-400">R$</span>
-                        <input 
-                          type="number"
-                          placeholder="Máx"
-                          className="w-full pl-8 pr-2 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 font-medium"
-                          value={maxPrice}
-                          onChange={(e) => setMaxPrice(e.target.value)}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <button 
-                    onClick={() => {
-                      setSearchQuery('');
-                      setFilterType('ALL');
-                      setFilterCondition('ALL');
-                      setSortBy('NEWEST');
-                      setMinPrice('');
-                      setMaxPrice('');
-                    }}
-                    className="flex items-center gap-1 px-3 py-2 text-xs font-bold text-red-500 hover:bg-red-50 rounded-lg transition-colors border border-transparent hover:border-red-100"
-                  >
-                    <X size={14} /> Limpar
-                  </button>
-                </div>
               </div>
 
               <div className="space-y-4">
-                <div className="flex justify-between items-center px-2">
-                  <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                    <Users size={20} className="text-blue-500" /> 
-                    {filteredOpportunities.length} Clientes em sua área de atuação
-                  </h2>
-                </div>
-
                 {filteredOpportunities.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {filteredOpportunities.map(op => (
@@ -383,14 +294,11 @@ const SupplierDashboard: React.FC<SupplierDashboardProps> = ({ user }) => {
                         }}
                         className="bg-white p-6 rounded-3xl border border-slate-200 hover:border-blue-400 hover:shadow-xl transition-all cursor-pointer flex flex-col justify-between group relative overflow-hidden"
                       >
-                        <div className="relative">
+                        <div>
                           <div className="flex justify-between items-start mb-3">
                             <div className="flex gap-2">
                               <span className={`px-2 py-1 rounded text-[10px] font-black tracking-widest uppercase ${op.type === IntentType.BUY ? 'bg-emerald-100 text-emerald-700' : op.type === IntentType.SELL ? 'bg-amber-100 text-amber-700' : 'bg-indigo-100 text-indigo-700'}`}>
                                 {op.type === IntentType.BUY ? 'Compra' : op.type === IntentType.SELL ? 'Venda' : 'Troca'}
-                              </span>
-                              <span className="bg-slate-50 text-slate-600 px-2 py-1 rounded text-[10px] font-bold border border-slate-100">
-                                {op.category}
                               </span>
                             </div>
                             <div className="flex items-center gap-1 text-emerald-600 font-black text-lg">
@@ -401,11 +309,8 @@ const SupplierDashboard: React.FC<SupplierDashboardProps> = ({ user }) => {
                           <h3 className="text-lg font-bold text-slate-900 mb-2 group-hover:text-blue-600 transition-colors">{op.productName}</h3>
                           <p className="text-sm text-slate-500 line-clamp-3 mb-4">{op.description}</p>
                         </div>
-                        
-                        <div className="flex items-center justify-between mt-4 relative">
-                           <span className="text-[10px] text-slate-400 font-medium italic">
-                            Publicado em {new Date(op.createdAt).toLocaleDateString('pt-BR')}
-                           </span>
+                        <div className="flex items-center justify-between mt-4">
+                           <span className="text-[10px] text-slate-400 font-medium">Publicado em {new Date(op.createdAt).toLocaleDateString('pt-BR')}</span>
                            <button className="flex items-center justify-center gap-2 bg-blue-600 text-white px-6 py-2.5 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-md text-sm">
                             <Send size={16} /> Fazer Proposta
                           </button>
@@ -416,9 +321,8 @@ const SupplierDashboard: React.FC<SupplierDashboardProps> = ({ user }) => {
                 ) : (
                   <div className="bg-white rounded-3xl border border-slate-200 p-20 text-center flex flex-col items-center">
                     <Search size={64} className="text-slate-200 mb-6" />
-                    <h2 className="text-xl font-bold text-slate-900">Nenhuma oportunidade em sua área</h2>
-                    <p className="text-slate-500 mt-2 max-w-xs">Não há intenções de compra abertas nos seus segmentos (<span className="font-bold">{user.businessSegments?.join(', ')}</span>).</p>
-                    <button onClick={() => setActiveTab('CATALOG')} className="mt-6 text-blue-600 font-bold hover:underline text-sm">Atualizar meus segmentos no perfil</button>
+                    <h2 className="text-xl font-bold text-slate-900">Nenhuma oportunidade disponível</h2>
+                    <p className="text-slate-500 mt-2 max-w-xs">Tente ajustar seus filtros ou segmentos de atuação.</p>
                   </div>
                 )}
               </div>
@@ -430,14 +334,18 @@ const SupplierDashboard: React.FC<SupplierDashboardProps> = ({ user }) => {
               <div className="flex justify-between items-center px-2">
                 <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                   <CheckCircle size={20} className="text-emerald-500" /> 
-                  Minhas Ofertas Enviadas
+                  Acompanhamento de Ofertas
                 </h2>
               </div>
 
               {myOffers.length > 0 ? (
                 <div className="grid grid-cols-1 gap-4">
                   {myOffers.map(off => (
-                    <div key={off.id} className="bg-white p-6 rounded-3xl border border-slate-200 flex flex-col md:flex-row gap-6 hover:shadow-md transition-shadow relative overflow-hidden">
+                    <div key={off.id} className={`bg-white p-6 rounded-3xl border flex flex-col md:flex-row gap-6 hover:shadow-md transition-shadow relative overflow-hidden ${
+                      off.status === 'REJECTED' ? 'border-red-200 bg-red-50/10' : 
+                      off.status === 'COUNTER_OFFERED' ? 'border-indigo-200 bg-indigo-50/10' : 
+                      'border-slate-200'
+                    }`}>
                       <div className="md:w-32 h-32 bg-slate-100 rounded-2xl overflow-hidden shrink-0">
                         <img src={off.images[0]} className="w-full h-full object-cover" alt="" />
                       </div>
@@ -447,13 +355,13 @@ const SupplierDashboard: React.FC<SupplierDashboardProps> = ({ user }) => {
                             <h3 className="text-lg font-bold text-slate-900">{off.productName}</h3>
                             <span className={`text-[10px] font-black tracking-widest uppercase px-2 py-0.5 rounded ${
                               off.status === 'ACCEPTED' ? 'bg-emerald-100 text-emerald-700' : 
-                              off.status === 'REJECTED' ? 'bg-red-100 text-red-700' : 
-                              off.status === 'COUNTER_OFFERED' ? 'bg-indigo-100 text-indigo-700' :
+                              off.status === 'REJECTED' ? 'bg-red-500 text-white shadow-sm' : 
+                              off.status === 'COUNTER_OFFERED' ? 'bg-indigo-600 text-white shadow-sm' :
                               'bg-amber-100 text-amber-700'
                             }`}>
                               {off.status === 'PENDING' ? 'Em análise' : 
                                off.status === 'ACCEPTED' ? 'Venda Confirmada' : 
-                               off.status === 'REJECTED' ? 'Proposta Recusada' : 
+                               off.status === 'REJECTED' ? 'Recusada pelo Comprador' : 
                                'Contra-proposta Recebida'}
                             </span>
                           </div>
@@ -464,36 +372,28 @@ const SupplierDashboard: React.FC<SupplierDashboardProps> = ({ user }) => {
                                 <ArrowLeftRight size={14} /> Sugestão: {formatCurrency(off.counterPrice)}
                               </p>
                             )}
-                            <p className="text-[10px] text-slate-400 font-medium">Válida até {new Date(off.validUntil).toLocaleDateString('pt-BR')}</p>
                           </div>
                         </div>
                         
                         <p className="text-sm text-slate-500 line-clamp-2">{off.description}</p>
                         
-                        {off.status === 'COUNTER_OFFERED' && (
-                          <div className="mt-4 p-4 bg-indigo-50 border border-indigo-100 rounded-2xl">
-                            <p className="text-xs font-bold text-indigo-700 flex items-center gap-2 mb-1">
-                              <AlertCircle size={14} /> O comprador solicitou um novo valor
-                            </p>
-                            {off.buyerFeedback && (
-                              <p className="text-xs text-indigo-600 italic">"{off.buyerFeedback}"</p>
-                            )}
-                            <button 
-                              onClick={() => {
-                                setSelectedOp(Database.getIntents().find(i => i.id === off.intentId) || null);
-                                setProposalPrice(off.counterPrice?.toString() || '');
-                              }}
-                              className="mt-3 text-xs font-bold bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition-colors"
-                            >
-                              Atualizar Oferta
-                            </button>
-                          </div>
-                        )}
-
-                        {off.status === 'REJECTED' && (
-                          <div className="mt-2 p-3 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-2">
-                            <Ban className="text-red-500" size={16} />
-                            <p className="text-xs font-bold text-red-700">O comprador recusou esta proposta.</p>
+                        {(off.status === 'REJECTED' || off.status === 'COUNTER_OFFERED') && (
+                          <div className={`mt-4 p-4 rounded-2xl border ${off.status === 'REJECTED' ? 'bg-red-50 border-red-100' : 'bg-indigo-50 border-indigo-100'}`}>
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                {off.status === 'REJECTED' ? <Ban className="text-red-600" size={16} /> : <AlertCircle className="text-indigo-600" size={16} />}
+                                <p className={`text-xs font-bold ${off.status === 'REJECTED' ? 'text-red-700' : 'text-indigo-700'}`}>
+                                  {off.status === 'REJECTED' ? 'O comprador não aceitou a proposta inicial.' : 'O comprador solicitou um novo valor.'}
+                                </p>
+                              </div>
+                              <button 
+                                onClick={() => handleTryAgain(off)}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-white transition-all shadow-md ${off.status === 'REJECTED' ? 'bg-red-600 hover:bg-red-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+                              >
+                                <RotateCcw size={14} /> Fazer Nova Proposta
+                              </button>
+                            </div>
+                            {off.buyerFeedback && <p className="mt-2 text-xs text-slate-600 italic">Feedback do comprador: "{off.buyerFeedback}"</p>}
                           </div>
                         )}
                       </div>
@@ -501,35 +401,37 @@ const SupplierDashboard: React.FC<SupplierDashboardProps> = ({ user }) => {
                   ))}
                 </div>
               ) : (
-                <div className="bg-white rounded-3xl border border-slate-200 p-20 text-center flex flex-col items-center">
+                <div className="bg-white rounded-3xl border border-slate-200 p-20 text-center flex flex-col items-center text-slate-900">
                   <CheckCircle size={64} className="text-slate-200 mb-6" />
-                  <h2 className="text-xl font-bold text-slate-900">Nenhuma oferta enviada</h2>
-                  <p className="text-slate-500 mt-2 max-w-xs">Comece a responder as intenções de compra dos clientes para ver suas propostas aqui.</p>
+                  <h2 className="text-xl font-bold">Nenhuma oferta enviada</h2>
+                  <p className="text-slate-500 mt-2">Comece a responder às oportunidades para ver suas propostas aqui.</p>
                 </div>
               )}
             </div>
           )}
 
           {activeTab === 'CATALOG' && (
-            <div className="bg-white rounded-3xl border border-slate-200 p-20 text-center flex flex-col items-center">
+            <div className="bg-white rounded-3xl border border-slate-200 p-20 text-center flex flex-col items-center text-slate-900">
               <Package size={64} className="text-slate-200 mb-6" />
-              <h2 className="text-xl font-bold text-slate-900">Gerencie seu estoque</h2>
-              <p className="text-slate-500 mt-2 max-w-xs">Cadastre seus produtos para cruzamento automático ou atualize seus segmentos de interesse no perfil.</p>
+              <h2 className="text-xl font-bold">Gerencie seu catálogo</h2>
+              <p className="text-slate-500 mt-2">Cadastre seus produtos para serem notificados automaticamente.</p>
             </div>
           )}
         </div>
       </div>
 
-      {/* Counter Proposal Modal */}
+      {/* Proposal Modal (New or Edit) */}
       {selectedOp && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+            <div className={`p-6 border-b border-slate-100 flex justify-between items-center ${editingOfferId ? 'bg-indigo-600 text-white' : 'bg-slate-50'}`}>
               <div>
-                <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">Enviando Proposta</p>
-                <h3 className="text-xl font-bold text-slate-900">{selectedOp.productName}</h3>
+                <p className={`text-[10px] font-bold uppercase tracking-widest ${editingOfferId ? 'text-indigo-100' : 'text-blue-600'}`}>
+                  {editingOfferId ? 'Re-negociando Proposta' : 'Enviando Proposta'}
+                </p>
+                <h3 className="text-xl font-bold">{selectedOp.productName}</h3>
               </div>
-              <button onClick={() => setSelectedOp(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-400">
+              <button onClick={() => { setSelectedOp(null); setEditingOfferId(null); }} className="p-2 hover:bg-black/10 rounded-full transition-colors">
                 <X size={20} />
               </button>
             </div>
@@ -549,7 +451,7 @@ const SupplierDashboard: React.FC<SupplierDashboardProps> = ({ user }) => {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase">Validade da Oferta</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">Validade</label>
                   <input 
                     type="date" 
                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all" 
@@ -569,7 +471,7 @@ const SupplierDashboard: React.FC<SupplierDashboardProps> = ({ user }) => {
               </div>
               
               <div className="space-y-4">
-                <label className="text-xs font-bold text-slate-500 uppercase block">Fotos do Produto</label>
+                <label className="text-xs font-bold text-slate-500 uppercase block text-slate-900">Fotos do Produto</label>
                 <div className="flex flex-wrap gap-3">
                   {proposalImages.map((img, idx) => (
                     <div key={idx} className="relative w-20 h-20 rounded-xl overflow-hidden group border border-slate-200">
@@ -590,24 +492,17 @@ const SupplierDashboard: React.FC<SupplierDashboardProps> = ({ user }) => {
                     <Camera size={20} />
                     <span className="text-[10px] font-bold mt-1">Adicionar</span>
                   </button>
-                  <input 
-                    type="file" 
-                    ref={fileInputRef} 
-                    onChange={handleImageUpload} 
-                    multiple 
-                    accept="image/*" 
-                    className="hidden" 
-                  />
+                  <input type="file" ref={fileInputRef} onChange={handleImageUpload} multiple accept="image/*" className="hidden" />
                 </div>
               </div>
 
               <button 
                 onClick={handleSendProposal}
                 disabled={isSubmitting}
-                className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-blue-700 transition-all shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
+                className={`w-full text-white py-4 rounded-xl font-bold text-lg transition-all shadow-lg flex items-center justify-center gap-2 disabled:opacity-50 ${editingOfferId ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-blue-600 hover:bg-blue-700'}`}
               >
                 {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : <Send size={20} />}
-                {isSubmitting ? 'ENVIANDO...' : 'Enviar Proposta ao Cliente'}
+                {isSubmitting ? 'ENVIANDO...' : editingOfferId ? 'Atualizar e Reenviar' : 'Enviar Proposta'}
               </button>
             </div>
           </div>

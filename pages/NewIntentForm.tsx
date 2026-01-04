@@ -2,7 +2,8 @@
 import React, { useState } from 'react';
 import { UserProfile, IntentType, ProductCondition, Intent, BUSINESS_CATEGORIES } from '../types';
 import { Database } from '../services/db';
-import { ShoppingCart, ArrowLeft, Tag, DollarSign, Info, Plus, Loader2, List } from 'lucide-react';
+import { ShoppingCart, ArrowLeft, Tag, DollarSign, Info, Plus, Loader2, List, Sparkles, ExternalLink, TrendingUp } from 'lucide-react';
+import { GoogleGenAI } from "@google/genai";
 
 interface NewIntentFormProps {
   user: UserProfile;
@@ -10,8 +11,18 @@ interface NewIntentFormProps {
   onCancel: () => void;
 }
 
+interface MarketInsight {
+  minPrice: number;
+  maxPrice: number;
+  analysis: string;
+  sources: { title: string; uri: string }[];
+}
+
 const NewIntentForm: React.FC<NewIntentFormProps> = ({ user, onComplete, onCancel }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSearchingMarket, setIsSearchingMarket] = useState(false);
+  const [marketInsight, setMarketInsight] = useState<MarketInsight | null>(null);
+  
   const [formData, setFormData] = useState({
     type: IntentType.BUY,
     category: '',
@@ -20,6 +31,63 @@ const NewIntentForm: React.FC<NewIntentFormProps> = ({ user, onComplete, onCance
     budget: '',
     condition: ProductCondition.BOTH
   });
+
+  const fetchMarketPrice = async () => {
+    if (!formData.productName || formData.productName.length < 3) {
+      alert('Por favor, digite o nome do produto primeiro.');
+      return;
+    }
+
+    setIsSearchingMarket(true);
+    setMarketInsight(null);
+
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const prompt = `Analise o preço de mercado atual no Brasil para o produto: "${formData.productName}". 
+      Retorne APENAS um objeto JSON com:
+      - minPrice: (número, preço mínimo encontrado)
+      - maxPrice: (número, preço máximo encontrado)
+      - analysis: (string curta de 2 frases sobre a tendência de preço)
+      Exemplo: {"minPrice": 1200, "maxPrice": 1500, "analysis": "Os preços estão estáveis, com promoções frequentes em grandes varejistas."}`;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: prompt,
+        config: {
+          tools: [{ googleSearch: {} }],
+        },
+      });
+
+      const text = response.text || "";
+      // Tentativa de extrair JSON do texto (o modelo pode envolver em markdown)
+      const jsonMatch = text.match(/\{.*\}/s);
+      const data = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+      
+      // Extrair links das fontes de pesquisa do Google
+      const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+      const sources = chunks
+        .filter((chunk: any) => chunk.web)
+        .map((chunk: any) => ({
+          title: chunk.web.title || 'Ver fonte',
+          uri: chunk.web.uri
+        }))
+        .slice(0, 3); // Pegar top 3
+
+      if (data) {
+        setMarketInsight({
+          minPrice: data.minPrice,
+          maxPrice: data.maxPrice,
+          analysis: data.analysis,
+          sources: sources
+        });
+      }
+    } catch (error) {
+      console.error("Erro na pesquisa de mercado:", error);
+      alert("Não foi possível realizar a pesquisa de mercado agora. Tente novamente em instantes.");
+    } finally {
+      setIsSearchingMarket(false);
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,6 +116,10 @@ const NewIntentForm: React.FC<NewIntentFormProps> = ({ user, onComplete, onCance
       setIsSubmitting(false);
       onComplete();
     }, 800);
+  };
+
+  const formatCurrency = (val: number) => {
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
   };
 
   return (
@@ -104,7 +176,18 @@ const NewIntentForm: React.FC<NewIntentFormProps> = ({ user, onComplete, onCance
           </div>
 
           <div className="space-y-4">
-            <label className="block text-sm font-bold text-slate-700 uppercase tracking-widest">Produto ou Serviço</label>
+            <div className="flex justify-between items-end">
+              <label className="block text-sm font-bold text-slate-700 uppercase tracking-widest">Produto ou Serviço</label>
+              <button 
+                type="button"
+                onClick={fetchMarketPrice}
+                disabled={isSearchingMarket || !formData.productName}
+                className="flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:text-blue-700 disabled:opacity-50 transition-colors"
+              >
+                {isSearchingMarket ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                {isSearchingMarket ? 'Pesquisando mercado...' : 'Pesquisar preço médio'}
+              </button>
+            </div>
             <input 
               required
               className="w-full px-4 py-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all font-medium text-lg"
@@ -112,6 +195,50 @@ const NewIntentForm: React.FC<NewIntentFormProps> = ({ user, onComplete, onCance
               value={formData.productName}
               onChange={e => setFormData({...formData, productName: e.target.value})}
             />
+
+            {marketInsight && (
+              <div className="bg-slate-900 rounded-2xl p-5 text-white animate-in slide-in-from-top-2 duration-300">
+                <div className="flex items-center gap-2 mb-3 text-blue-400">
+                  <TrendingUp size={18} />
+                  <span className="text-xs font-black uppercase tracking-widest">Insights de Mercado</span>
+                </div>
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div className="bg-white/5 p-3 rounded-xl border border-white/10">
+                    <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Preço Mínimo</p>
+                    <p className="text-lg font-black">{formatCurrency(marketInsight.minPrice)}</p>
+                  </div>
+                  <div className="bg-white/5 p-3 rounded-xl border border-white/10">
+                    <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Preço Máximo</p>
+                    <p className="text-lg font-black">{formatCurrency(marketInsight.maxPrice)}</p>
+                  </div>
+                </div>
+                <p className="text-sm text-slate-300 leading-relaxed mb-4">{marketInsight.analysis}</p>
+                <div className="space-y-2 border-t border-white/10 pt-4">
+                  <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-2">Fontes Verificadas:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {marketInsight.sources.map((source, idx) => (
+                      <a 
+                        key={idx}
+                        href={source.uri}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg text-[10px] font-bold transition-colors border border-white/5"
+                      >
+                        {source.title} <ExternalLink size={10} />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+                <button 
+                  type="button"
+                  onClick={() => setFormData({...formData, budget: marketInsight.minPrice.toString()})}
+                  className="w-full mt-4 bg-blue-600 hover:bg-blue-500 py-2 rounded-xl text-xs font-bold transition-colors"
+                >
+                  Usar preço mínimo como meu orçamento
+                </button>
+              </div>
+            )}
+
             <textarea 
               required
               rows={4}

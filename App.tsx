@@ -22,21 +22,31 @@ const App: React.FC = () => {
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);
 
-  // Monitoramento de notificações
+  // Monitoramento de notificações (Comprador e Fornecedor)
   useEffect(() => {
-    if (!user || user.role !== UserRole.BUYER) {
+    if (!user) {
       setUnreadNotifications(0);
       return;
     }
 
     const checkNotifications = () => {
-      const userIntents = Database.getIntentsByUserId(user.id);
-      const intentIds = userIntents.map(i => i.id);
-      const allOffers = Database.getOffers();
-      const relevantOffers = allOffers.filter(o => intentIds.includes(o.intentId));
+      let diff = 0;
       
-      const lastCount = parseInt(localStorage.getItem(`last_offer_count_${user.id}`) || '0');
-      const diff = relevantOffers.length - lastCount;
+      if (user.role === UserRole.BUYER) {
+        // Notificações para Comprador: Novas ofertas recebidas
+        const userIntents = Database.getIntentsByUserId(user.id);
+        const intentIds = userIntents.map(i => i.id);
+        const allOffers = Database.getOffers();
+        const relevantOffers = allOffers.filter(o => intentIds.includes(o.intentId));
+        const lastCount = parseInt(localStorage.getItem(`last_offer_count_${user.id}`) || '0');
+        diff = relevantOffers.length - lastCount;
+      } else {
+        // Notificações para Fornecedor: Status de ofertas enviadas (Recusadas ou Contra-propostas)
+        const myOffers = Database.getOffers().filter(o => o.supplierId === user.id);
+        const alertStatusOffers = myOffers.filter(o => o.status === 'REJECTED' || o.status === 'COUNTER_OFFERED');
+        const lastAlertCount = parseInt(localStorage.getItem(`last_alert_count_${user.id}`) || '0');
+        diff = alertStatusOffers.length - lastAlertCount;
+      }
       
       setUnreadNotifications(diff > 0 ? diff : 0);
     };
@@ -48,14 +58,20 @@ const App: React.FC = () => {
 
   const clearNotifications = () => {
     if (!user) return;
-    const userIntents = Database.getIntentsByUserId(user.id);
-    const intentIds = userIntents.map(i => i.id);
-    const allOffers = Database.getOffers();
-    const relevantOffersCount = allOffers.filter(o => intentIds.includes(o.intentId)).length;
     
-    localStorage.setItem(`last_offer_count_${user.id}`, relevantOffersCount.toString());
+    if (user.role === UserRole.BUYER) {
+      const userIntents = Database.getIntentsByUserId(user.id);
+      const intentIds = userIntents.map(i => i.id);
+      const allOffers = Database.getOffers();
+      const relevantOffersCount = allOffers.filter(o => intentIds.includes(o.intentId)).length;
+      localStorage.setItem(`last_offer_count_${user.id}`, relevantOffersCount.toString());
+    } else {
+      const myOffers = Database.getOffers().filter(o => o.supplierId === user.id);
+      const alertStatusCount = myOffers.filter(o => o.status === 'REJECTED' || o.status === 'COUNTER_OFFERED').length;
+      localStorage.setItem(`last_alert_count_${user.id}`, alertStatusCount.toString());
+    }
+
     setUnreadNotifications(0);
-    
     if (currentPage !== 'DASHBOARD') {
       setCurrentPage('DASHBOARD');
     }
@@ -84,11 +100,10 @@ const App: React.FC = () => {
     setIsSocialLoggingIn(false);
   };
 
-  const handleGoogleLogin = () => {
+  const handleGoogleLogin = (preferredRole: UserRole = UserRole.BUYER) => {
     setIsSocialLoggingIn(true);
     setLoginError(null);
 
-    // Simulação do Fluxo Google OAuth 2.0
     setTimeout(() => {
       const googleUserData = {
         name: 'Usuário Google Teste',
@@ -105,7 +120,7 @@ const App: React.FC = () => {
           username: googleUserData.email.split('@')[0] + '_google',
           email: googleUserData.email,
           phone: '',
-          role: UserRole.BUYER,
+          role: preferredRole,
           document: '000.000.000-00',
           registrationAddress: { street: '', number: '', neighborhood: '', city: '', state: '', zip: '' }
         };
@@ -114,7 +129,7 @@ const App: React.FC = () => {
       }
 
       loginUser(foundUser);
-    }, 1500);
+    }, 1200);
   };
 
   const logout = () => {
@@ -136,7 +151,7 @@ const App: React.FC = () => {
 
   const renderPage = () => {
     if (!user && currentPage === 'LANDING') return <LandingPage onStart={() => setCurrentPage('REGISTER')} onLogin={() => setShowLoginModal(true)} />;
-    if (!user && currentPage === 'REGISTER') return <Registration onComplete={onRegistrationComplete} onBack={() => setCurrentPage('LANDING')} />;
+    if (!user && currentPage === 'REGISTER') return <Registration onComplete={onRegistrationComplete} onGoogleSignUp={handleGoogleLogin} onBack={() => setCurrentPage('LANDING')} />;
 
     if (user) {
       switch (currentPage) {
@@ -213,7 +228,7 @@ const App: React.FC = () => {
             </div>
             
             <div className="p-8 space-y-6">
-              <button onClick={handleGoogleLogin} disabled={isSocialLoggingIn} className="w-full flex items-center justify-center gap-3 bg-white border border-slate-300 py-3 rounded-xl font-bold text-slate-700 hover:bg-slate-50 transition-all shadow-sm active:scale-[0.98] disabled:opacity-70">
+              <button onClick={() => handleGoogleLogin(UserRole.BUYER)} disabled={isSocialLoggingIn} className="w-full flex items-center justify-center gap-3 bg-white border border-slate-300 py-3 rounded-xl font-bold text-slate-700 hover:bg-slate-50 transition-all shadow-sm active:scale-[0.98] disabled:opacity-70">
                 {isSocialLoggingIn ? <Loader2 className="animate-spin text-blue-600" size={20} /> : <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.964 10.706c-.18-.54-.282-1.117-.282-1.706s.102-1.166.282-1.706V4.962H.957C.347 6.177 0 7.55 0 9s.347 2.823.957 4.038l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.443 2.017.957 4.962L3.964 7.294C4.672 5.167 6.656 3.58 9 3.58z"/></svg>}
                 {isSocialLoggingIn ? 'Autenticando...' : 'Entrar com Google'}
               </button>
